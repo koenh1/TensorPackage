@@ -2477,7 +2477,7 @@ extension Tensor: BinaryFloatingPoint where T: BinaryFloatingPoint {
     }
 
     public init<R: RandomNumberGenerator>(shape: [IndexType.Scalar], mean: T, stddev: T, using rng:inout R) where T.RawSignificand: FixedWidthInteger {
-        var n: NormalDistribution<T, R> = .init(using:rng)
+        var n: NormalDistribution<T, R> = .init(using: rng)
         self.init(shape: shape, function: {_ in
             (n.next()!*stddev)+mean
         })

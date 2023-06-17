@@ -4,7 +4,7 @@
 import PackageDescription
 
 let package = Package(
-    
+
     name: "TensorPackage",
     platforms: [
         .macOS(.v13),
@@ -15,7 +15,7 @@ let package = Package(
         // Products define the executables and libraries a package produces, and make them visible to other packages.
         .library(
             name: "TensorPackage",
-            targets: ["TensorPackage"]),
+            targets: ["TensorPackage"])
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-numerics.git", .upToNextMajor(from: "1.0.0"))
@@ -31,6 +31,6 @@ let package = Package(
             ]),
         .testTarget(
             name: "TensorPackageTests",
-            dependencies: ["TensorPackage"]),
+            dependencies: ["TensorPackage"])
     ]
 )

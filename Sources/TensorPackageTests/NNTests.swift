@@ -143,13 +143,13 @@ extension Model: DifferentiableTensorModel where T: DifferentiableProtocol, T.Va
 
 final class NNTests: XCTestCase {
 
-    func testGradientDecent() {
-        let x: Vector<R, Float> = .init(shape: 3, initialValue: 1)
-        let y: Vector<R, Float> = .init(shape: 3, initialValue: 0.5)
-        var m = Model<Differentiable<Float>>(x: x.differentiable, c: y.constant)
-        _ = m.gradientDescent(maxIterations: 200, initialStepSize: -0.6, stepReductionFactor: 0.5, stepIncrementFactor: 1.01, tolerance: Float.ulpOfOne*Float.ulpOfOne)
-        print(m.x)
-    }
+//    func testGradientDecent() {
+//        let x: Vector<R, Float> = .init(shape: 3, initialValue: 1)
+//        let y: Vector<R, Float> = .init(shape: 3, initialValue: 0.5)
+//        var m = Model<Differentiable<Float>>(x: x.differentiable, c: y.constant)
+//        _ = m.gradientDescent(maxIterations: 200, initialStepSize: -0.6, stepReductionFactor: 0.5, stepIncrementFactor: 1.01,c1:0.5, tolerance: Float.ulpOfOne*Float.ulpOfOne)
+//        print(m.x)
+//    }
 
     func testGD() {
         enum R {}

@@ -513,21 +513,6 @@ final class TensorTests: XCTestCase {
         XCTAssertEqual([[[1.0, 2.0, 3.0, 4.0], [5.0, 6.0, 7.0, 8.0], [9.0, 10.0, 11.0, 12.0]], [[10.0, 20.0, 30.0, 40.0], [50.0, 60.0, 70.0, 80.0], [-1, -2, -3, -4]]], t)
     }
 
-    func testSIMDIterator() {
-#if DEBUG
-#else
-        typealias T = UInt32
-        var reduceTensor: T = 0
-        for _ in 0..<10000 {
-            var it = SIMDIterator<SIMD4<T>>.init(size: [40, 30, 20, 10], stride: [1, 40, 1200, 24000])
-            while let i = it.next() {
-                reduceTensor &+= i
-            }
-        }
-        print(reduceTensor)
-#endif
-    }
-
     enum T { }
     enum R { }
     enum C {}

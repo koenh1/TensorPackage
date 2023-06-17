@@ -369,8 +369,8 @@ final class ValueTests: XCTestCase {
         let d4g2 = d4g[d].gradient
         XCTAssertEqual(4*125, d4g[d])
         XCTAssertEqual(12*25, d4g2[d.value])
-        print(d4.graph)
-        print(d4g[d].graph)
+//        print(d4.graph)
+//        print(d4g[d].graph)
         print(d4.gradient)
     }
 
@@ -382,7 +382,7 @@ final class ValueTests: XCTestCase {
         let m: Differentiable<Vector<R, Float>> = (c*c*c).magnitude
         XCTAssertEqual([1.0, 8.0, 27.0], m.value)
         XCTAssertEqual([3.0, -12.0, 27.0], m.gradient[c])
-        print(m.graph)
+//        print(m.graph)
     }
 
     func testTensorTuple() {
@@ -488,7 +488,7 @@ final class ValueTests: XCTestCase {
         XCTAssertEqual(-2, L.gradient[c])
         XCTAssertEqual(-4, L.gradient[b])
         XCTAssertEqual(6, L.gradient[a])
-        print(L.graph)
+//        print(L.graph)
         // L = -2*(a*b+c) //-2(2*-3+10) = -2*(4)=8
         // dL/da = -2*b = -6
         // dl/db = -2*a = 4

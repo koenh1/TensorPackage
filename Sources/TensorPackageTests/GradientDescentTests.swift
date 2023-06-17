@@ -34,16 +34,35 @@ final class GradientDescentTests: XCTestCase {
         #if DEBUG
         print("debug mode")
         #endif
-        let x: Vector<R, Float> = .init(shape: [50], uniformValuesIn: 10..<11)
-        var r: Rosenbrock<Differentiable<Float>> = .init(x: x.differentiable)
+        var rand=NumPyRandomSource(seed: 1)
+        let x: Vector<R, Double> = .init(shape: [50], uniformValuesIn: 10..<11, using: &rand)
+        var r: Rosenbrock<Differentiable<Double>> = .init(x: x.differentiable)
 //        print(r.objective())
         let time: ContinuousClock = .init()
         let t = time.now
-        let c1 = r.gradientDescent(maxIterations: 50000, initialStepSize: -1, stepReductionFactor: 0.5, stepIncrementFactor: 1.1, tolerance: 1e-14)
+        var gradientEvals = 0
+        var stepSize: Double = r.findStepSize(alpha: 0.9, c1: 0.1)
+        while gradientEvals < 20000 && stepSize < -1e-6 {
+            if let c1 = r.gradientDescent(maxIterations: 100, stepSize: stepSize, tolerance: .ulpOfOne*10000, gradientEvals: &gradientEvals) {
+//                    print(c1)
+                    print(r.objective())
+                if c1.steps < 100 {
+                    break
+                }
+                if true {
+                    stepSize = r.findStepSize(alpha: 0.8, c1: 0.1)
+//                    print("new step \(stepSize)")
+                }
+//                print(time.now-t)
+            } else {
+                stepSize *= 0.7
+//                print(r.objective())
+//                print("new step2 \(stepSize)")
+            }
+        }
+        print(gradientEvals)
         print(r.objective())
         print(r.x)
-        print(time.now-t)
-        print(c1)
 //        r = .init(x: x.differentiable)
 //        t = time.now
 //        print(r.adaGrad(maxIterations: c1, learningRate: -1, tolerance: 1e-13))

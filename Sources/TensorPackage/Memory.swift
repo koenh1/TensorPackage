@@ -102,7 +102,7 @@ public struct Buffer<Element> {
     public var writable: UnsafeMutablePointer<Element> {
         mutating get {
             if !shared && !isKnownUniquelyReferenced(&mptr) {
-                //print("copying \(count) elements")
+                // print("copying \(count) elements")
                 self.mptr = self.mptr.copy(range: offset..<(offset+count))
                 self.offset = 0
             }
@@ -248,7 +248,7 @@ public struct NormalDistribution<T: BinaryFloatingPoint, R: RandomNumberGenerato
     var rng: R
     var n1: T = .nan
     var n2: T = .nan
-    public init(using rng:R) {
+    public init(using rng: R) {
         self.rng=rng
     }
     public mutating func next() -> T? {

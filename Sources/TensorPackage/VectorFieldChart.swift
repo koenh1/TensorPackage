@@ -23,15 +23,15 @@ struct Point: Hashable, Identifiable {
     }
 }
 
-public struct GradientField<Model:DifferentiableTensorModel>: View where Model.ValueType.ValueType==Double{
-    let model:Model
-    let xrange:ClosedRange<Model.ValueType.ValueType>
-    let yrange:ClosedRange<Model.ValueType.ValueType>
-    let x:WritableKeyPath<Model,Model.ValueType>
-    let y:WritableKeyPath<Model,Model.ValueType>
-    let xv:WritableKeyPath<Model.ViewModel,Model.ViewModel.ValueType>
-    let yv:WritableKeyPath<Model.ViewModel,Model.ViewModel.ValueType>
-    public init(model:Model,x:WritableKeyPath<Model,Model.ValueType>,xv:WritableKeyPath<Model.ViewModel,Model.ViewModel.ValueType>,y:WritableKeyPath<Model,Model.ValueType>,yv:WritableKeyPath<Model.ViewModel,Model.ViewModel.ValueType>,xrange:ClosedRange<Model.ValueType.ValueType>,yrange:ClosedRange<Model.ValueType.ValueType>) {
+public struct GradientField<Model: DifferentiableTensorModel>: View where Model.ValueType.ValueType==Double {
+    let model: Model
+    let xrange: ClosedRange<Model.ValueType.ValueType>
+    let yrange: ClosedRange<Model.ValueType.ValueType>
+    let x: WritableKeyPath<Model, Model.ValueType>
+    let y: WritableKeyPath<Model, Model.ValueType>
+    let xv: WritableKeyPath<Model.ViewModel, Model.ViewModel.ValueType>
+    let yv: WritableKeyPath<Model.ViewModel, Model.ViewModel.ValueType>
+    public init(model: Model, x: WritableKeyPath<Model, Model.ValueType>, xv: WritableKeyPath<Model.ViewModel, Model.ViewModel.ValueType>, y: WritableKeyPath<Model, Model.ValueType>, yv: WritableKeyPath<Model.ViewModel, Model.ViewModel.ValueType>, xrange: ClosedRange<Model.ValueType.ValueType>, yrange: ClosedRange<Model.ValueType.ValueType>) {
         self.model = model
         self.x = x
         self.y = y
@@ -45,14 +45,14 @@ public struct GradientField<Model:DifferentiableTensorModel>: View where Model.V
         let x = model[keyPath: x]
         let y = model[keyPath: y]
         defer {
-            v[keyPath:xv].value = x.value
-            v[keyPath:yv].value = y.value
+            v[keyPath: xv].value = x.value
+            v[keyPath: yv].value = y.value
         }
-        let eval:(Model.ValueType.ValueType,Model.ValueType.ValueType) -> (Model.ValueType.ValueType,Model.ValueType.ValueType) = {
-            v[keyPath:xv].value = $0
-            v[keyPath:yv].value = $1
-            let g = model.objective().gradients(for: [x,y])
-            return (g.result[0],g.result[1])
+        let eval: (Model.ValueType.ValueType, Model.ValueType.ValueType) -> (Model.ValueType.ValueType, Model.ValueType.ValueType) = {
+            v[keyPath: xv].value = $0
+            v[keyPath: yv].value = $1
+            let g = model.objective().gradients(for: [x, y])
+            return (g.result[0], g.result[1])
         }
         return VectorField(numRows: 50, numCols: 50, xrange: xrange, yrange: yrange, function: eval)
     }
@@ -64,26 +64,26 @@ public struct DimensionGrid: View {
     @State var selectedY: Int = -1
     @State var hoverX: Int = -1
     @State var hoverY: Int = -1
-    let builder:(Int,Int) -> any View
-    public init(dimensionCount: Int,builder:@escaping (Int,Int) -> any View = {x,y in Rectangle().foregroundColor(.blue)}) {
+    let builder: (Int, Int) -> any View
+    public init(dimensionCount: Int, builder:@escaping (Int, Int) -> any View = {_, _ in Rectangle().foregroundColor(.blue)}) {
         self.dimensionCount = dimensionCount
         self.builder = builder
     }
-    func makeView(_ row:Int,_ col:Int) -> any View {
-        row == col ? Rectangle().opacity(0) : builder(row,col)
+    func makeView(_ row: Int, _ col: Int) -> any View {
+        row == col ? Rectangle().opacity(0) : builder(row, col)
     }
     public var body: some View {
-        Grid(horizontalSpacing: 0, verticalSpacing: 0){
-            ForEach(0..<dimensionCount,id:\.self) { row in
+        Grid(horizontalSpacing: 0, verticalSpacing: 0) {
+            ForEach(0..<dimensionCount, id: \.self) { row in
                 GridRow {
                     Text("\(row)").opacity( row == hoverY ? 1 : 0.5 )
-                    ForEach(0..<dimensionCount,id:\.self) { col in
-                        AnyView(makeView(row,col))
-                            .border(col == selectedX && row == selectedY ? Color.white : Color.black,width:2)
+                    ForEach(0..<dimensionCount, id: \.self) { col in
+                        AnyView(makeView(row, col))
+                            .border(col == selectedX && row == selectedY ? Color.white : Color.black, width: 2)
                             .onTapGesture {
                             selectedX = col
                             selectedY = row
-                        }.onHover{
+                        }.onHover {
                             if $0 {
                                 hoverX = col
                                 hoverY = row
@@ -92,14 +92,13 @@ public struct DimensionGrid: View {
                                 hoverY = -1
                             }
                         }
-                       
-                        
+
                     }
                 }
             }
             GridRow {
                 Text("")
-                ForEach(0..<dimensionCount,id:\.self) {
+                ForEach(0..<dimensionCount, id: \.self) {
                     Text("\($0)").opacity( $0 == hoverX ? 1 : 0.5 )
                 }
             }
@@ -146,7 +145,7 @@ public struct VectorField: View {
     }
 
     public var body: some View {
-        VStack{
+        VStack {
             Spacer()
             GeometryReader { geo in
                 let sx = geo.size.width/CGFloat(2*numCols)
@@ -224,9 +223,8 @@ struct Arrow2: ChartSymbolShape {
 extension AnyView: CustomPlaygroundDisplayConvertible {
     @MainActor
     public var playgroundDescription: Any {
-        let renderer = ImageRenderer(content:self)
+        let renderer = ImageRenderer(content: self)
         return renderer.cgImage!
     }
-    
-    
+
 }
