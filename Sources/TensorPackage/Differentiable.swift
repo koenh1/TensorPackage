@@ -11,7 +11,7 @@ public protocol DifferentiableProtocol {
     associatedtype ValueType: DifferentiableValue
     var grad: ValueType { get }
     var value: ValueType { get set }
-    var id: ObjectIdentifier { get }
+    var generation: UInt32 { get }
     func clearGradient()
     var gradient: Gradients<ValueType> { get }
     var isConstant: Bool { get }
@@ -19,18 +19,20 @@ public protocol DifferentiableProtocol {
 //    mutating func updateValue(stepSize: ValueType)
 }
 
+var globalGeneration: UInt32 = 0
+
 public struct Gradients<ValueType: DifferentiableValue>: CustomStringConvertible {
     var result: [ValueType]
-    let visited: Set<ObjectIdentifier>
     init<C>(of f: Differentiable<C.Element.ValueType>, for parameters: C) where C: Collection, C.Element: DifferentiableProtocol, C.Element.ValueType == ValueType {
-        var visited: Set<ObjectIdentifier> = .init(parameters.map(\.id))
+        globalGeneration += 1
+        
         var list: [any HeaderProtocol] = []
         func listSorted(_ header: any HeaderProtocol) {
-            if !visited.contains(header.id) {
+            if header.generation != globalGeneration {
                 if header.isConstant {
                     return
                 }
-                visited.insert(header.id)
+                header.generation = globalGeneration
                 header.applyLeft(visitor: listSorted)
                 header.applyRight(visitor: listSorted)
                 list.append(header)
@@ -45,7 +47,6 @@ public struct Gradients<ValueType: DifferentiableValue>: CustomStringConvertible
         for x in list.reversed() {
             x.updateGrad()
         }
-        self.visited = visited
         result = parameters.map {$0.grad}
     }
     public func normSquared() -> ValueType where ValueType: Numeric {
@@ -72,65 +73,68 @@ public struct Gradients<ValueType: DifferentiableValue>: CustomStringConvertible
         }
     }
     public subscript<X: DifferentiableProtocol>(e: X) -> X.ValueType {
-        visited.contains(e.id) ? e.grad : .zero
+        e.generation == globalGeneration ? e.grad : .zero
     }
     public var description: String {
         result.debugDescription
     }
 }
-struct Graph<ValueType: DifferentiableValue>: CustomStringConvertible {
-    var visited: Set<ObjectIdentifier>=[]
-    var nodes:[(id: ObjectIdentifier, gradient: Any)] = []
-    var links:[(parent: ObjectIdentifier, child: ObjectIdentifier)] = []
-    init(_ header: any HeaderProtocol) {
-        var list: [any HeaderProtocol] = []
-        func listSorted(_ header: any HeaderProtocol) {
-            if !visited.contains(header.id) {
-                visited.insert(header.id)
-                header.applyLeft(visitor: listSorted)
-                header.applyRight(visitor: listSorted)
-                list.append(header)
-            }
-        }
-        listSorted(header)
-        for i in list {
-            i.clearGradient()
-        }
-        header.unitGradient()
-        for x in list.reversed() {
-            x.updateGrad()
-        }
-        for node in list {
-            nodes.append((id:node.id, gradient:node.grad))
-            node.applyLeft(visitor: {h in links.append((parent:node.id, child:h.id))})
-            node.applyRight(visitor: {h in links.append((parent:node.id, child:h.id))})
-        }
-    }
-    var description: String {
-        if #available(macOS 13.0, *) {
-            let regex = Regex  {
-                "ObjectIdentifier(0"
-                Capture {
-                    "x"
-                    OneOrMore {CharacterClass(.anyOf(")")).inverted}
-                }
-                ")"
-            }
-            func rep(_ id: ObjectIdentifier) -> String {
-                id.debugDescription.replacing(regex, with: \.1)
-            }
-            
-            return "digraph G {\nrankdir=LR\n"
-            +
-            nodes.map {"\(rep($0.id)) [shape=record, label=\"{{\($0.gradient)}}\"];"}.joined(separator: "\n")
-            + "\n" +
-            links.map {"\(rep($0.parent))->\(rep($0.child));"}.joined(separator: "\n")
-            + "\n}"
-        } else {
-            return ""
-        }
-    }
-}
+//struct Graph<ValueType: DifferentiableValue>: CustomStringConvertible {
+//    var nodes:[(id: ObjectIdentifier, gradient: ValueType)] = []
+//    var links:[(parent: ObjectIdentifier, child: ObjectIdentifier)] = []
+//    init(_ header: any HeaderProtocol) {
+//        var list: [any HeaderProtocol] = []
+//        globalGeneration += 1
+//        func listSorted(_ header: any HeaderProtocol) {
+//            if header.generation != globalGeneration {
+//                header.clearGradient()
+//                header.applyLeft(visitor: listSorted)
+//                header.applyRight(visitor: listSorted)
+//                list.append(header)
+//            }
+//        }
+//        listSorted(header)
+//        for i in list {
+//            i.clearGradient()
+//        }
+//        header.unitGradient()
+//        for x in list.reversed() {
+//            x.updateGrad()
+//        }
+//        for node in list {
+//            let id = ObjectIdentifier(node)
+////            let grad = node.grad
+////            let r:(id: ObjectIdentifier, gradient: Any) = (id:id,gradient:grad)
+//            node.applyLeft(visitor: {h in links.append((parent:ObjectIdentifier(node), child:ObjectIdentifier(h)))})
+//            node.applyRight(visitor: {h in links.append((parent:ObjectIdentifier(node), child:ObjectIdentifier(h)))})
+////            nodes.append(r)
+//        }
+//    }
+//    var description: String {
+//        if #available(macOS 13.0, *) {
+//            let regex = Regex  {
+//                "ObjectIdentifier(0"
+//                Capture {
+//                    "x"
+//                    OneOrMore {CharacterClass(.anyOf(")")).inverted}
+//                }
+//                ")"
+//            }
+//            func rep(_ id: ObjectIdentifier) -> String {
+//                id.debugDescription.replacing(regex, with: \.1)
+//            }
+//
+//            return "digraph G {\nrankdir=LR\n"
+//            +
+//            nodes.map {"\(rep($0.id)) [shape=record, label=\"{{\($0.gradient)}}\"];"}.joined(separator: "\n")
+//            + "\n" +
+//            links.map {"\(rep($0.parent))->\(rep($0.child));"}.joined(separator: "\n")
+//            + "\n}"
+//        } else {
+//            return ""
+//        }
+//    }
+//}
 public protocol DifferentiableValue: AdditiveArithmetic {
     static var one: Self { get }
 }
@@ -142,12 +146,12 @@ extension ExpressibleByIntegerLiteral {
 extension Int: DifferentiableValue {}
 extension Float: DifferentiableValue {}
 extension Double: DifferentiableValue {}
-protocol HeaderProtocol {
+protocol HeaderProtocol: AnyObject {
     associatedtype ValueType
-    var id: ObjectIdentifier { get }
     func applyLeft(visitor: (any HeaderProtocol) -> Void)
     func applyRight(visitor: (any HeaderProtocol) -> Void)
     func updateGrad()
+    var generation: UInt32 { get set }
     var isConstant: Bool { get }
     func clearGradient()
     func unitGradient()
@@ -161,19 +165,18 @@ class AbstractHeader<ValueType>: HeaderProtocol where ValueType: DifferentiableV
         self.init(.zero)
     }
     var grad: ValueType
+    var generation: UInt32 = 0
     func updateGrad() {
     }
     func unitGradient() {
         grad = .one
     }
     func clearGradient() {
+        generation = globalGeneration
         grad = .zero
     }
     var isConstant: Bool {
         Self.self == ConstantHeader<ValueType>.self
-    }
-    var id: ObjectIdentifier {
-        ObjectIdentifier(self)
     }
     func applyLeft(visitor: (any HeaderProtocol) -> Void) {
     }
@@ -193,8 +196,13 @@ private class CastHeader<ValueType: BinaryFloatingPoint&DifferentiableValue, Inp
         super.init(.zero)
     }
     var delegate: Header<InputType>
-    override var id: ObjectIdentifier {
-        delegate.id
+    override var generation: UInt32 {
+        get {
+            delegate.generation
+        }
+        set {
+            delegate.generation = newValue
+        }
     }
     override func applyLeft(visitor: (any HeaderProtocol) -> Void) {
         delegate.applyLeft(visitor: visitor)
@@ -219,8 +227,13 @@ private class CastIntHeader<ValueType: BinaryFloatingPoint&DifferentiableValue, 
         super.init(.zero)
     }
     var delegate: Header<InputType>
-    override var id: ObjectIdentifier {
-        delegate.id
+    override var generation: UInt32 {
+        get {
+            delegate.generation
+        }
+        set {
+            delegate.generation = newValue
+        }
     }
     override func applyLeft(visitor: (any HeaderProtocol) -> Void) {
         delegate.applyLeft(visitor: visitor)
@@ -329,8 +342,8 @@ public struct Differentiable<ValueType: DifferentiableValue>: DifferentiableProt
     public var grad: ValueType {
         header.grad
     }
-    public var id: ObjectIdentifier {
-        header.id
+    public var generation: UInt32 {
+        header.generation
     }
     var callback: CallBack<ValueType> {
         (header:header as! Header<ValueType>, value:value)
@@ -377,9 +390,9 @@ public struct Differentiable<ValueType: DifferentiableValue>: DifferentiableProt
     public func gradients<C: Collection>(for parameters: C) -> Gradients<ValueType>  where C.Element: DifferentiableProtocol, C.Element.ValueType == ValueType {
         .init(of: self, for: parameters)
     }
-    public var graph: String {
-        Graph<ValueType>(header).description
-    }
+//    public var graph: String {
+//        Graph<ValueType>(header).description
+//    }
     public func clearGradient() {
         header.clearGradient()
     }
