@@ -655,6 +655,9 @@ public struct Tensor<Types: TypeListProtocol, IndexType: SIMD&Comparable&Sequenc
         }
         self.init(buffer: .init(capacity: Int(s.product), initialValue: initialValue), shape: .init(shape: s))
     }
+    public init(shape: ShapeType, initialValue: T) {
+        self.init(buffer: .init(capacity: Int(shape.count), initialValue: initialValue), shape: shape)
+    }
     public init(shape: IndexType.Scalar..., initialValue: T) {
         self.init(shape: shape, initialValue: initialValue)
     }

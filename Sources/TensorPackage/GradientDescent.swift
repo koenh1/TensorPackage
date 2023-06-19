@@ -17,6 +17,30 @@ public protocol DifferentiableTensorModel: TensorModel where ValueType: Differen
 }
 
 extension DifferentiableTensorModel where ValueType.ValueType: FloatingPoint {
+    
+    public mutating func rprop(maxIterations:Int,stepSize:ValueType.ValueType,stepSizeRange:Range<ValueType.ValueType>,beta:ValueType.ValueType, tolerance: ValueType.ValueType, gradientEvals:inout Int) -> (steps: Int, relativeReduction: ValueType.ValueType)?{
+        guard stepSize < 0 else { fatalError() }
+        var view = view
+        var stepSize = stepSize
+        var gradientSquares = TensorGradients<Self,ValueType.ValueType>(forTensors: self)
+        var last: ValueType.ValueType = .zero
+        var gradientValue = objective()
+        for iter in 0..<maxIterations {
+            var gradients = TensorGradients<Self,ValueType.ValueType>(of: gradientValue, forTensors: self)
+            gradientSquares.updateGradients(other: gradients, f: {$0 = beta*$0+(1-beta)*$1*$1})
+            gradients.updateGradients(other: gradientSquares, f: {$0 = $0/$1.squareRoot()})
+            let normSquared = gradients.update(stepSize: stepSize, views: &view)
+            gradientEvals += 1
+            let previous = gradientValue.value
+            gradientValue = objective()
+            last = (gradientValue.value-previous)/normSquared
+            if normSquared.magnitude <= tolerance*ValueType.ValueType(gradientSquares.count) {
+                return (iter, last)
+            }
+        }
+        return (maxIterations, last)
+    }
+    
     public mutating func gradientDescent(maxIterations: Int, stepSize: ValueType.ValueType, tolerance: ValueType.ValueType, gradientEvals:inout Int) -> (steps: Int, relativeReduction: ValueType.ValueType)? {
         guard stepSize < 0 else { fatalError() }
         var gradientValue = objective()

@@ -18,6 +18,7 @@ public struct TensorGradients<Parameters, ValueType: DifferentiableValue>: Custo
         "\(result)"
     }
     var result: [String: Any]
+    let generation: UInt32
     var count: Int = 0
     static func visitParameters(parameters: Any, key: String, _ f: (String, any TensorProtocol) -> Void) {
         let m = Mirror(reflecting: parameters)
@@ -41,27 +42,29 @@ public struct TensorGradients<Parameters, ValueType: DifferentiableValue>: Custo
             for i in s.elements {
                 if let v = i as? any DifferentiableProtocol {
                     if !v.isConstant {
-                        v.clearGradient()
+                        v.clearGradient(generation: generation)
                         count += 1
                     }
                 }
             }
         }
+        globalGeneration += 1
+        self.result = [:]
+        self.generation = globalGeneration
         Self.visitParameters(parameters: parameters, key: "") { n, s in
             gather(n, s)
         }
         self.count = count
         var list: [any HeaderProtocol] = []
-        globalGeneration += 1
         func listSorted(_ header: any HeaderProtocol) {
-            if header.generation != globalGeneration {
+            if header.generation != generation {
                 if header.isConstant {
                     return
                 }
                 header.applyLeft(visitor: listSorted)
                 header.applyRight(visitor: listSorted)
                 list.append(header)
-                header.clearGradient()
+                header.clearGradient(generation: generation)
             }
         }
         listSorted(header)
@@ -69,7 +72,6 @@ public struct TensorGradients<Parameters, ValueType: DifferentiableValue>: Custo
         for x in list.reversed() {
             x.updateGrad()
         }
-        var tensors: [String: Any] = [:]
         func gatherGrads<S: TensorProtocol>(_ key: String, _ s: S) {
             var isConstant = true
             let t: Tensor<S.Types, S.IndexType, ValueType> = s.mapTensor { i -> ValueType in
@@ -82,23 +84,25 @@ public struct TensorGradients<Parameters, ValueType: DifferentiableValue>: Custo
                 return .zero
             }
             if !isConstant {
-                tensors[key] = t
+                result[key] = t
             }
         }
         Self.visitParameters(parameters: parameters, key: "") {n, s in
             gatherGrads(n, s)
         }
-        result = tensors
     }
     public init(forTensors parameters: Parameters) {
-        var tensors: [String: Any] = [:]
+        var count = 0
+        self.generation = 0
+        self.result = [:]
         func gather<S: TensorProtocol>(_ key: String, _ s: S) {
-            tensors[key]=Tensor<S.Types, S.IndexType, ValueType>(shape: s.shape.map {$0}, initialValue: .zero)
+            result[key]=Tensor<S.Types, S.IndexType, ValueType>(shape: s.shape, initialValue: .zero)
+            count += s.shape.count
         }
         Self.visitParameters(parameters: parameters, key: "") { n, s in
             gather(n, s)
         }
-        result = tensors
+        self.count = count
     }
     public subscript<R: TensorProtocol>(key: String) -> R? {
         result[key] as? R
@@ -117,6 +121,53 @@ public struct TensorGradients<Parameters, ValueType: DifferentiableValue>: Custo
             p.value += t
             return t*g
         })
+    }
+    public func update<X>(stepSizes: Self, views:inout X) -> ValueType where ValueType: Numeric {
+        var result: ValueType = .zero
+        func gatherGrads<S: TensorProtocol>(_ key: String, _ param: S) {
+            if let t = self.result[key] as? Tensor<S.Types, S.IndexType, ValueType> {
+                var param = param as! Tensor<S.Types, S.IndexType, Undifferentiable<ValueType>>
+                let steps = stepSizes.result[key] as! Tensor<S.Types, S.IndexType, ValueType>
+                var it=t.shape.makeIterator()
+                var it2=param.shape.makeIterator()
+                param.buffer.applyShared { sptr in
+                    t.buffer.apply { tptr in
+                        steps.buffer.apply { stepsptr in
+                            while let i=it.next(), let j=it2.next() {
+                                let stepSize = stepsptr[Int(i)]
+                                let g = tptr[Int(i)]
+                                let tt = stepSize*g
+                                sptr[Int(j)].value += tt
+                                result += tt*g
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Self.visitParameters(parameters: views, key: "") {n, s in
+            gatherGrads(n, s)
+        }
+        return result
+    }
+    public func gradientSigns() -> BitArray where ValueType: FloatingPoint {
+        var words = [UInt64](repeating: 0, count: (count+63)/64)
+        var index = 0
+        func gatherGrads<S: TensorProtocol>(_ c: S) {
+            let cc = c as! Tensor<S.Types,S.IndexType,ValueType>
+            for i in cc.elements {
+                if i < .zero {
+                    words[index >> 6] |= 1 << (index&63)
+                }
+                index += 1
+            }
+        }
+        result.values.forEach{ v in
+            if let c = v as? (any TensorProtocol) {
+                gatherGrads(c)
+            }
+        }
+        return .init(indices: 0..<count, words: words)
     }
     public func update<X, Y>(parameters:inout Y, op:(inout X, ValueType) -> ValueType) -> ValueType {
         func gatherGrads<S: TensorProtocol>(result:inout ValueType, _ key: String, _ param: S) {
@@ -139,11 +190,28 @@ public struct TensorGradients<Parameters, ValueType: DifferentiableValue>: Custo
         }
         return result
     }
-    public mutating func updateGradients(factor: ValueType, factor2: ValueType, other: Self) where ValueType: FloatingPoint {
+    public mutating func updateGradients(op:(Int,inout ValueType)->Void) where ValueType: FloatingPoint {
+        func update<S: TensorProtocol>(result:inout S) {
+            let a = result as! Tensor<S.Types, S.IndexType, ValueType>
+            let buffer = a.buffer.sharedWritable
+            var it = a.shape.makeIterator()
+            var index = 0
+            while let i = it.next() {
+                op(index,&buffer[Int(i)])
+                index += 1
+            }
+        }
+        for i in result {
+            if var w = i.value as? any TensorProtocol {
+                update(result: &w)
+            }
+        }
+    }
+    public mutating func updateGradients(other: Self, f:(inout ValueType,ValueType)->Void) where ValueType: FloatingPoint {
         func update<S: TensorProtocol>(result:inout S, other: Any) {
             var a = result as! Tensor<S.Types, S.IndexType, ValueType>
             let b = other as! Tensor<S.Types, S.IndexType, ValueType>
-            if !a.assignCombine(b, {$0 = factor*$0 + factor2*$1}) {
+            if !a.assignCombine(b, f) {
                 fatalError()
             }
             result = a as! S
@@ -162,43 +230,6 @@ public struct TensorGradients<Parameters, ValueType: DifferentiableValue>: Custo
         }
     }
 }
-// struct GradientDescent<TensorType: TensorProtocol> where TensorType.T: Real&DifferentiableValue {
-//    typealias DTensorType = Tensor<TensorType.Types, TensorType.IndexType, Differentiable<TensorType.T>>
-//    var function: (TensorType) -> TensorType.T
-//    var diffFunction: (DTensorType) -> Differentiable<TensorType.T>
-//    init(function:@escaping (TensorType) -> TensorType.T, diffFunction:@escaping (DTensorType) -> Differentiable<TensorType.T>) {
-//        self.function = function
-//        self.diffFunction = diffFunction
-//    }
-//
-//    func step(steps: Int, stepSize: TensorType.T, parameters:inout TensorType) -> TensorType.T {
-//        var first: TensorType.T?
-//        var last: TensorType.T?
-//        for _ in 0..<steps {
-//            let x = parameters.constant
-//            let f = diffFunction(x)
-//            let f1 = f.value
-//            if first == nil {
-//                first = f1
-//            }
-//            let g = f.gradients(for: x.elements)
-//            print("gradient =\(g.normSquared())")
-//            g.update(stepSize: stepSize, parameters: &parameters.elements)
-//            let f2 = function(parameters)
-//            if f2 > f1 {
-//                g.update(stepSize: -stepSize, parameters: &parameters.elements)
-//                break
-//            }
-//            last = f2
-//            print("new value =\(f2)")
-//        }
-//        if let first = first, let last=last {
-//            return first - last
-//        } else {
-//            return 0
-//        }
-//    }
-// }
 
 extension TensorProtocol where T: DifferentiableValue&SignedNumeric {
     public var differentiable: Tensor<Types, IndexType, Differentiable<T>> {

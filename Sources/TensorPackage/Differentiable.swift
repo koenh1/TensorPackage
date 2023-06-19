@@ -12,7 +12,7 @@ public protocol DifferentiableProtocol {
     var grad: ValueType { get }
     var value: ValueType { get set }
     var generation: UInt32 { get }
-    func clearGradient()
+    func clearGradient(generation:UInt32)
     var gradient: Gradients<ValueType> { get }
     var isConstant: Bool { get }
     func gradients<C: Collection>(for parameters: C) -> Gradients<ValueType>  where C.Element: DifferentiableProtocol, C.Element.ValueType == ValueType
@@ -23,31 +23,35 @@ var globalGeneration: UInt32 = 0
 
 public struct Gradients<ValueType: DifferentiableValue>: CustomStringConvertible {
     var result: [ValueType]
+    var generation: UInt32
     init<C>(of f: Differentiable<C.Element.ValueType>, for parameters: C) where C: Collection, C.Element: DifferentiableProtocol, C.Element.ValueType == ValueType {
         globalGeneration += 1
-        
+        self.generation = globalGeneration
         var list: [any HeaderProtocol] = []
         func listSorted(_ header: any HeaderProtocol) {
-            if header.generation != globalGeneration {
+            if header.generation != generation {
                 if header.isConstant {
                     return
                 }
-                header.generation = globalGeneration
+                header.generation = generation
                 header.applyLeft(visitor: listSorted)
                 header.applyRight(visitor: listSorted)
                 list.append(header)
-                header.clearGradient()
+                header.clearGradient(generation: generation)
             }
         }
+        self.result = []
         listSorted(f.header)
         for i in parameters {
-            i.clearGradient()
+            i.clearGradient(generation: generation)
         }
         f.header.unitGradient()
         for x in list.reversed() {
             x.updateGrad()
         }
-        result = parameters.map {$0.grad}
+        parameters.forEach {
+            result.append($0.grad)
+        }
     }
     public func normSquared() -> ValueType where ValueType: Numeric {
         result.reduce(0, {$0+$1*$1})
@@ -73,68 +77,13 @@ public struct Gradients<ValueType: DifferentiableValue>: CustomStringConvertible
         }
     }
     public subscript<X: DifferentiableProtocol>(e: X) -> X.ValueType {
-        e.generation == globalGeneration ? e.grad : .zero
+        return e.generation >= self.generation ? e.grad : .zero
     }
     public var description: String {
         result.debugDescription
     }
 }
-//struct Graph<ValueType: DifferentiableValue>: CustomStringConvertible {
-//    var nodes:[(id: ObjectIdentifier, gradient: ValueType)] = []
-//    var links:[(parent: ObjectIdentifier, child: ObjectIdentifier)] = []
-//    init(_ header: any HeaderProtocol) {
-//        var list: [any HeaderProtocol] = []
-//        globalGeneration += 1
-//        func listSorted(_ header: any HeaderProtocol) {
-//            if header.generation != globalGeneration {
-//                header.clearGradient()
-//                header.applyLeft(visitor: listSorted)
-//                header.applyRight(visitor: listSorted)
-//                list.append(header)
-//            }
-//        }
-//        listSorted(header)
-//        for i in list {
-//            i.clearGradient()
-//        }
-//        header.unitGradient()
-//        for x in list.reversed() {
-//            x.updateGrad()
-//        }
-//        for node in list {
-//            let id = ObjectIdentifier(node)
-////            let grad = node.grad
-////            let r:(id: ObjectIdentifier, gradient: Any) = (id:id,gradient:grad)
-//            node.applyLeft(visitor: {h in links.append((parent:ObjectIdentifier(node), child:ObjectIdentifier(h)))})
-//            node.applyRight(visitor: {h in links.append((parent:ObjectIdentifier(node), child:ObjectIdentifier(h)))})
-////            nodes.append(r)
-//        }
-//    }
-//    var description: String {
-//        if #available(macOS 13.0, *) {
-//            let regex = Regex  {
-//                "ObjectIdentifier(0"
-//                Capture {
-//                    "x"
-//                    OneOrMore {CharacterClass(.anyOf(")")).inverted}
-//                }
-//                ")"
-//            }
-//            func rep(_ id: ObjectIdentifier) -> String {
-//                id.debugDescription.replacing(regex, with: \.1)
-//            }
-//
-//            return "digraph G {\nrankdir=LR\n"
-//            +
-//            nodes.map {"\(rep($0.id)) [shape=record, label=\"{{\($0.gradient)}}\"];"}.joined(separator: "\n")
-//            + "\n" +
-//            links.map {"\(rep($0.parent))->\(rep($0.child));"}.joined(separator: "\n")
-//            + "\n}"
-//        } else {
-//            return ""
-//        }
-//    }
-//}
+
 public protocol DifferentiableValue: AdditiveArithmetic {
     static var one: Self { get }
 }
@@ -153,7 +102,7 @@ protocol HeaderProtocol: AnyObject {
     func updateGrad()
     var generation: UInt32 { get set }
     var isConstant: Bool { get }
-    func clearGradient()
+    func clearGradient(generation: UInt32)
     func unitGradient()
     var grad: ValueType { get set }
 }
@@ -171,8 +120,8 @@ class AbstractHeader<ValueType>: HeaderProtocol where ValueType: DifferentiableV
     func unitGradient() {
         grad = .one
     }
-    func clearGradient() {
-        generation = globalGeneration
+    func clearGradient(generation: UInt32) {
+        self.generation = generation
         grad = .zero
     }
     var isConstant: Bool {
@@ -207,8 +156,8 @@ private class CastHeader<ValueType: BinaryFloatingPoint&DifferentiableValue, Inp
     override func applyLeft(visitor: (any HeaderProtocol) -> Void) {
         delegate.applyLeft(visitor: visitor)
     }
-    override func clearGradient() {
-        delegate.clearGradient()
+    override func clearGradient(generation:UInt32) {
+        delegate.clearGradient(generation: generation)
     }
     override func unitGradient() {
         delegate.unitGradient()
@@ -238,8 +187,8 @@ private class CastIntHeader<ValueType: BinaryFloatingPoint&DifferentiableValue, 
     override func applyLeft(visitor: (any HeaderProtocol) -> Void) {
         delegate.applyLeft(visitor: visitor)
     }
-    override func clearGradient() {
-        delegate.clearGradient()
+    override func clearGradient(generation:UInt32) {
+        delegate.clearGradient(generation: generation)
     }
     override func unitGradient() {
         delegate.unitGradient()
@@ -267,26 +216,26 @@ private class Header1<ValueType: DifferentiableValue>: Header<ValueType> {
         back(grad, &data)
     }
 }
+private struct CollectionOfTwo<T> {
+    var a:T
+    var b:T
+}
 private class Header2<ValueType: DifferentiableValue>: Header<ValueType> {
     let back: (ValueType, UnsafePointer<(header: Header<ValueType>, value: ValueType)>) -> Void
-    var data1:(header: Header<ValueType>, value: ValueType)
-    var data2:(header: Header<ValueType>, value: ValueType)
+    var data:CollectionOfTwo<(header: Header<ValueType>, value: ValueType)>
     init(_ p1: (Header<ValueType>, ValueType), _ p2: (Header<ValueType>, ValueType), back:@escaping (ValueType, UnsafePointer<(header: Header<ValueType>, value: ValueType)>) -> Void) {
-        self.data1 = p1
-        self.data2 = p2
+        self.data = .init(a:p1,b:p2)
         self.back = back
         super.init(.zero)
     }
     override func applyLeft(visitor: (any HeaderProtocol) -> Void) {
-        visitor(data1.header)
+        visitor(data.a.header)
     }
     override func applyRight(visitor: (any HeaderProtocol) -> Void) {
-        visitor(data2.header)
+        visitor(data.b.header)
     }
     override func updateGrad() {
-        [data1, data2].withUnsafeBufferPointer {
-            back(grad, $0.baseAddress!)
-        }
+        back(grad, &data.a)
     }
 }
 private class Header3<ValueType: DifferentiableValue>: Header<ValueType> {
@@ -390,11 +339,8 @@ public struct Differentiable<ValueType: DifferentiableValue>: DifferentiableProt
     public func gradients<C: Collection>(for parameters: C) -> Gradients<ValueType>  where C.Element: DifferentiableProtocol, C.Element.ValueType == ValueType {
         .init(of: self, for: parameters)
     }
-//    public var graph: String {
-//        Graph<ValueType>(header).description
-//    }
-    public func clearGradient() {
-        header.clearGradient()
+    public func clearGradient(generation:UInt32) {
+        header.clearGradient(generation: generation)
     }
 }
 
