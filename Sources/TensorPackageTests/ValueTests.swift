@@ -350,28 +350,30 @@ final class ValueTests: XCTestCase {
     }
 
     func testSecondDerivative() {
-        let d: Differentiable<Differentiable<Double>> = .init(value: 5)
+        let d: Differentiable<Differentiable<Double>> = .init(value:.init(value: 5))
         let d2 = d*d
-        let d3 = d2*d
-        let d4 = d2*d2
         XCTAssertEqual(25, d2.value)
-        XCTAssertEqual(125, d3.value)
-        XCTAssertEqual(625, d4.value)
         let d2g = d2.gradient
-        let d2g2 = d2g[d].gradient
+        print(d2g[d])
         XCTAssertEqual(10, d2g[d])
+        let d2g2 = d2g[d].gradient
         XCTAssertEqual(2, d2g2[d.value])
+        print(d2.graph)
+        print(d2g[d].graph)
+        let d3 = d2*d
+        XCTAssertEqual(125, d3.value)
         let d3g = d3.gradient
         let d3g2 = d3g[d].gradient
         XCTAssertEqual(75, d3g[d])
         XCTAssertEqual(30, d3g2[d.value])
+        let d4 = d2*d2
+        XCTAssertEqual(625, d4.value)
         let d4g = d4.gradient
         let d4g2 = d4g[d].gradient
         XCTAssertEqual(4*125, d4g[d])
         XCTAssertEqual(12*25, d4g2[d.value])
-//        print(d4.graph)
-//        print(d4g[d].graph)
-        print(d4.gradient)
+        print(d4.graph)
+        print(d4g[d].graph)
     }
 
     func testMagnitude() {
@@ -382,7 +384,7 @@ final class ValueTests: XCTestCase {
         let m: Differentiable<Vector<R, Float>> = (c*c*c).magnitude
         XCTAssertEqual([1.0, 8.0, 27.0], m.value)
         XCTAssertEqual([3.0, -12.0, 27.0], m.gradient[c])
-//        print(m.graph)
+        print(m.graph)
     }
 
     func testTensorTuple() {
@@ -419,7 +421,7 @@ final class ValueTests: XCTestCase {
             print(dv4*(0.001 as Vector<R, Float>))
         }
         print(g4)
-        g4.updateGradients(factor: 1, factor2: 0.5, other: g4b)
+//        g4.updateGradients(factor: 1, factor2: 0.5, other: g4b)
         print(g4)
         vv.values = [1, 2, 3]
         ww.values = [4, 5, 6]
@@ -488,7 +490,7 @@ final class ValueTests: XCTestCase {
         XCTAssertEqual(-2, L.gradient[c])
         XCTAssertEqual(-4, L.gradient[b])
         XCTAssertEqual(6, L.gradient[a])
-//        print(L.graph)
+        print(L.graph)
         // L = -2*(a*b+c) //-2(2*-3+10) = -2*(4)=8
         // dL/da = -2*b = -6
         // dl/db = -2*a = 4
