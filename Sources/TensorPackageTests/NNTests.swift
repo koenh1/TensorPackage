@@ -14,7 +14,7 @@ enum LayerDimension {}
 struct Layer<InputDimension, OutputDimension, T: BinaryFloatingPoint&DifferentiableValue&ElementaryFunctions> {
     var weight: Matrix<InputDimension, OutputDimension, T>
     var bias: Vector<OutputDimension, T>
-    init<R: RandomNumberGenerator>(nin: UInt32, nout: UInt32, rng:inout R) where T.RawSignificand: FixedWidthInteger {
+    init<R: RandomNumberGenerator>(nin: ScalarIndex, nout: ScalarIndex, rng:inout R) where T.RawSignificand: FixedWidthInteger {
         weight = Matrix<InputDimension, OutputDimension, T>(shape: [nin, nout], uniformValuesIn: -1..<1, using: &rng)
         bias = Vector<OutputDimension, T>(shape: [nout], uniformValuesIn: -1..<1, using: &rng)
     }
@@ -33,7 +33,7 @@ protocol LayersProtocol {
     associatedtype InputDimension
     associatedtype OutputDimension
     associatedtype Tail: LayersProtocol where T == Tail.T, Tail.OutputDimension == OutputDimension
-    init<R: RandomNumberGenerator>(nin: UInt32, nouts: [UInt32], rng:inout R)
+    init<R: RandomNumberGenerator>(nin: ScalarIndex, nouts: [ScalarIndex], rng:inout R)
     func call(input: Vector<InputDimension, T>) -> Vector<OutputDimension, T>
     func call<D>(batch: Matrix<D, InputDimension, T>) -> Matrix<D, OutputDimension, T>
     func calld<D>(batch: Matrix<D, InputDimension, Differentiable<T>>) -> Matrix<D, OutputDimension, Differentiable<T>>
@@ -50,7 +50,7 @@ struct EndLayer<OutputDimension, T: BinaryFloatingPoint&DifferentiableValue&Elem
         batch
     }
     typealias Tail = Self
-    init<R>(nin: UInt32, nouts: [UInt32], rng: inout R) where R: RandomNumberGenerator {
+    init<R>(nin: ScalarIndex, nouts: [ScalarIndex], rng: inout R) where R: RandomNumberGenerator {
         if !nouts.isEmpty {
             fatalError()
         }
@@ -61,7 +61,7 @@ struct Layers<InputDimension, Tail: LayersProtocol>: LayersProtocol {
     typealias OutputDimension = Tail.OutputDimension
     var layer: Layer<InputDimension, Tail.InputDimension, T>
     var tail: Tail
-    init<R: RandomNumberGenerator>(nin: UInt32, nouts: [UInt32], rng:inout R) {
+    init<R: RandomNumberGenerator>(nin: ScalarIndex, nouts: [ScalarIndex], rng:inout R) {
         var nouts = nouts
         if let f = nouts.first {
             nouts.removeFirst()

@@ -299,7 +299,7 @@ final class ValueTests: XCTestCase {
     }
 
     func testRange() {
-        let N: UInt32 = 10
+        let N: ScalarIndex = 10
 
         let m: Vector<R, Differentiable<Double>> = Vector<R, Double>(shape: [N], function: {_ in 1}).differentiable
         let x: Differentiable<Double> = m[m.index(m.startIndex, offsetBy: 5)].value
@@ -337,7 +337,7 @@ final class ValueTests: XCTestCase {
     }
     func testMemoryUse() {
         let m1 = computeMemoryUsed()
-        let N: UInt32 = 100
+        let N: ScalarIndex = 100
 //        var m:[Differentiable<Double>] = (0..<N).map{.init(value:Double($0))}
         let v: Matrix<R, R, Differentiable<Double>> = .init(shape: [N, N], function: {x in .init(value: Double(x.y) - Double(x.x))})
 //        print(v)
@@ -350,7 +350,7 @@ final class ValueTests: XCTestCase {
     }
 
     func testSecondDerivative() {
-        let d: Differentiable<Differentiable<Double>> = .init(value:.init(value: 5))
+        let d: Differentiable<Differentiable<Double>> = .init(value: .init(value: 5))
         let d2 = d*d
         XCTAssertEqual(25, d2.value)
         let d2g = d2.gradient
@@ -444,11 +444,11 @@ final class ValueTests: XCTestCase {
     func testUndifferentiable() {
         enum R {}
         #if DEBUG
-        let list: [UInt32] = [100, 1000, 10000, 100000]
+        let list: [ScalarIndex] = [100, 1000, 10000, 100000, 1000000]
         #else
-        let list: [UInt32] = [100, 1000, 10000, 100000, 1000000, 10000000]
+        let list: [ScalarIndex] = [100, 1000, 10000, 100000, 1000000, 10000000]
         #endif
-        for N: UInt32 in list {
+        for N: ScalarIndex in list {
             print("start \(N)")
             let v: Vector<R, Differentiable<Double>> = .init(shape: [N], uniformValuesIn: 0..<1)
             //        XCTAssertEqual(v.description, v.view.description)

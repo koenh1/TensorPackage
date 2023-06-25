@@ -64,6 +64,12 @@ public struct Buffer<Element> {
         count = capacity
         shared = false
     }
+    init(address: MemoryPtr<Element>, shared: Bool) {
+        mptr = address
+        self.shared = shared
+        offset = 0
+        count = address.count
+    }
     init<X>(address: MemoryPtr<Element>, retaining: MemoryPtr<X>) {
         mptr = address
         shared = true
@@ -78,6 +84,11 @@ public struct Buffer<Element> {
         shared = false
     }
 
+    public var copy: Self {
+        let mem: MemoryPtr<Element> = offset != 0 ? mptr.copy(range: offset..<offset+count) : mptr
+        return .init(address: mem, shared: false)
+    }
+
     func apply<R>(_ body: (UnsafePointer<Element>) -> R) -> R {
         body(readable)
     }
@@ -90,6 +101,9 @@ public struct Buffer<Element> {
         .init(owner: self, offset: offset+index.lowerBound, count: index.count, shared: shared)
     }
     mutating func transfer(range: Range<Int>, from: Self) {
+        if mptr.address.baseAddress! == from.mptr.address.baseAddress! {
+            return
+        }
         apply { optr in
             from.apply { iptr in
                 optr.advanced(by: range.lowerBound).update(from: iptr, count: range.count)
@@ -102,7 +116,7 @@ public struct Buffer<Element> {
     public var writable: UnsafeMutablePointer<Element> {
         mutating get {
             if !shared && !isKnownUniquelyReferenced(&mptr) {
-                // print("copying \(count) elements")
+//                print("copying \(count) elements")
                 self.mptr = self.mptr.copy(range: offset..<(offset+count))
                 self.offset = 0
             }
@@ -115,9 +129,9 @@ public struct Buffer<Element> {
     mutating func apply<R>(_ body: (UnsafeMutablePointer<Element>) -> R) -> R {
         body(writable)
     }
-    mutating func applyShared<R>(_ body: (UnsafeMutablePointer<Element>) -> R) -> R {
-        body(sharedWritable)
-    }
+//    mutating func applyShared<R>(_ body: (UnsafeMutablePointer<Element>) -> R) -> R {
+//        body(sharedWritable)
+//    }
 }
 
 public struct BufferIndexingIterator<IT: IteratorProtocol, Element>: IteratorProtocol where IT.Element: FixedWidthInteger {

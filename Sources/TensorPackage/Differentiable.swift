@@ -12,7 +12,7 @@ public protocol DifferentiableProtocol {
     var grad: ValueType { get }
     var value: ValueType { get set }
     var generation: UInt32 { get }
-    func clearGradient(generation:UInt32)
+    func clearGradient(generation: UInt32)
     var gradient: Gradients<ValueType> { get }
     var isConstant: Bool { get }
     func gradients<C: Collection>(for parameters: C) -> Gradients<ValueType>  where C.Element: DifferentiableProtocol, C.Element.ValueType == ValueType
@@ -141,64 +141,64 @@ class Header<ValueType: DifferentiableValue>: AbstractHeader<ValueType> {
 private class ConstantHeader<ValueType: DifferentiableValue>: Header<ValueType> {}
 private class CastHeader<ValueType: BinaryFloatingPoint&DifferentiableValue, InputType: BinaryFloatingPoint&DifferentiableValue>: Header<ValueType> {
     init(delegate: Header<InputType>) {
-        self.delegate = delegate
+        self.delegateTo = delegate
         super.init(.zero)
     }
-    var delegate: Header<InputType>
+    var delegateTo: Header<InputType>
     override var generation: UInt32 {
         get {
-            delegate.generation
+            delegateTo.generation
         }
         set {
-            delegate.generation = newValue
+            delegateTo.generation = newValue
         }
     }
     override func applyLeft(visitor: (any HeaderProtocol) -> Void) {
-        delegate.applyLeft(visitor: visitor)
+        delegateTo.applyLeft(visitor: visitor)
     }
-    override func clearGradient(generation:UInt32) {
-        delegate.clearGradient(generation: generation)
+    override func clearGradient(generation: UInt32) {
+        delegateTo.clearGradient(generation: generation)
     }
     override func unitGradient() {
-        delegate.unitGradient()
+        delegateTo.unitGradient()
     }
     override func updateGrad() {
-        delegate.updateGrad()
-        grad = ValueType(delegate.grad)
+        delegateTo.updateGrad()
+        grad = ValueType(delegateTo.grad)
     }
     override var isConstant: Bool {
-        delegate.isConstant
+        delegateTo.isConstant
     }
 }
 private class CastIntHeader<ValueType: BinaryFloatingPoint&DifferentiableValue, InputType: BinaryInteger&DifferentiableValue>: Header<ValueType> {
     init(delegate: Header<InputType>) {
-        self.delegate = delegate
+        self.delegateTo = delegate
         super.init(.zero)
     }
-    var delegate: Header<InputType>
+    var delegateTo: Header<InputType>
     override var generation: UInt32 {
         get {
-            delegate.generation
+            delegateTo.generation
         }
         set {
-            delegate.generation = newValue
+            delegateTo.generation = newValue
         }
     }
     override func applyLeft(visitor: (any HeaderProtocol) -> Void) {
-        delegate.applyLeft(visitor: visitor)
+        delegateTo.applyLeft(visitor: visitor)
     }
-    override func clearGradient(generation:UInt32) {
-        delegate.clearGradient(generation: generation)
+    override func clearGradient(generation: UInt32) {
+        delegateTo.clearGradient(generation: generation)
     }
     override func unitGradient() {
-        delegate.unitGradient()
+        delegateTo.unitGradient()
     }
     override func updateGrad() {
-        delegate.updateGrad()
-        grad = ValueType(delegate.grad)
+        delegateTo.updateGrad()
+        grad = ValueType(delegateTo.grad)
     }
     override var isConstant: Bool {
-        delegate.isConstant
+        delegateTo.isConstant
     }
 }
 private class Header1<ValueType: DifferentiableValue>: Header<ValueType> {
@@ -217,14 +217,14 @@ private class Header1<ValueType: DifferentiableValue>: Header<ValueType> {
     }
 }
 private struct CollectionOfTwo<T> {
-    var a:T
-    var b:T
+    var a: T
+    var b: T
 }
 private class Header2<ValueType: DifferentiableValue>: Header<ValueType> {
     let back: (ValueType, UnsafePointer<(header: Header<ValueType>, value: ValueType)>) -> Void
-    var data:CollectionOfTwo<(header: Header<ValueType>, value: ValueType)>
+    var data: CollectionOfTwo<(header: Header<ValueType>, value: ValueType)>
     init(_ p1: (Header<ValueType>, ValueType), _ p2: (Header<ValueType>, ValueType), back:@escaping (ValueType, UnsafePointer<(header: Header<ValueType>, value: ValueType)>) -> Void) {
-        self.data = .init(a:p1,b:p2)
+        self.data = .init(a: p1, b: p2)
         self.back = back
         super.init(.zero)
     }
@@ -339,7 +339,7 @@ public struct Differentiable<ValueType: DifferentiableValue>: DifferentiableProt
     public func gradients<C: Collection>(for parameters: C) -> Gradients<ValueType>  where C.Element: DifferentiableProtocol, C.Element.ValueType == ValueType {
         .init(of: self, for: parameters)
     }
-    public func clearGradient(generation:UInt32) {
+    public func clearGradient(generation: UInt32) {
         header.clearGradient(generation: generation)
     }
 }

@@ -11,19 +11,17 @@ import RegexBuilder
 // arange, concat, chunk, dsplit, cstack, dstack,
 // masked_select, reshape, tile,
 
-public typealias ScalarIndex = UInt32
-
 protocol ShapeProtocol {
-    associatedtype IndexType: SIMD&Comparable&Sequence where IndexType.Scalar==ScalarIndex, IndexType.Scalar == IndexType.Element
+    associatedtype IndexType: TensorIndex
     associatedtype Dimensions: TypeListProtocol
     init(shape: IndexType, stride: IndexType)
-    init(shape: [IndexType.Scalar], stride: [IndexType.Scalar])
+    init(shape: [ScalarIndex], stride: [ScalarIndex])
     var shape: IndexType { get }
     var stride: IndexType { get }
     static var order: Int { get }
     var count: Int { get }
-    subscript(index: IndexType) -> IndexType.Scalar { get }
-    subscript(index: IndexType.Scalar...) -> IndexType.Scalar { get }
+    subscript(index: IndexType) -> ScalarIndex { get }
+    subscript(index: ScalarIndex...) -> ScalarIndex { get }
 }
 
 public protocol TypeListProtocol {
@@ -123,17 +121,17 @@ func broadcastImpl<T: FixedWidthInteger>(shape1:inout [T], stride1:inout [T], sh
     return matched == c
 }
 
-public struct Shape<Dimensions: TypeListProtocol, IndexType: SIMD&Comparable&Sequence>: ShapeProtocol where IndexType.Scalar==ScalarIndex, IndexType.Element == IndexType.Scalar {
+public struct Shape<Dimensions: TypeListProtocol, IndexType: TensorIndex>: ShapeProtocol {
     let shape: IndexType
     let stride: IndexType
-    init(shape: IndexType.Scalar...) {
-        self.init(shape: .init(shape))
+    init(shape: ScalarIndex...) {
+        self.init(shape: [ScalarIndex](shape))
     }
     init() where Dimensions == NilTypeList, IndexType: FixedWidthInteger {
         self.init(shape: .init(IndexType()))
     }
-    static func defaultStride(shape: [IndexType.Scalar]) -> [IndexType.Scalar] {
-        var s: [IndexType.Scalar] = [1]
+    static func defaultStride(shape: [ScalarIndex]) -> [ScalarIndex] {
+        var s: [ScalarIndex] = [1]
         for i in Swift.stride(from: 1, to: shape.count, by: 1) {
             s.append(s[i-1]*shape[i-1])
         }
@@ -161,16 +159,16 @@ public struct Shape<Dimensions: TypeListProtocol, IndexType: SIMD&Comparable&Seq
     init(shape: IndexType) {
         self.init(shape: shape, stride: Self.defaultStride(shape: shape))
     }
-    init(shape: IndexType.Scalar..., stride: IndexType.Scalar...) {
+    init(shape: ScalarIndex..., stride: ScalarIndex...) {
         self.init(shape: .init(shape), stride: .init(stride))
     }
-    init(shape: [IndexType.Scalar], stride: [IndexType.Scalar]) {
+    init(shape: [ScalarIndex], stride: [ScalarIndex]) {
         self.init(shape: IndexType(shape), stride: IndexType(stride))
     }
-    init(shape: [IndexType.Scalar]) {
+    init(shape: [ScalarIndex]) {
         if shape.count < IndexType.scalarCount {
             var shape = shape
-            shape.append(contentsOf: [IndexType.Scalar](repeating: 1, count: IndexType.scalarCount-shape.count))
+            shape.append(contentsOf: [ScalarIndex](repeating: 1, count: IndexType.scalarCount-shape.count))
             self.init(shape: IndexType(shape))
         } else {
             self.init(shape: IndexType(shape))
@@ -189,10 +187,10 @@ public struct Shape<Dimensions: TypeListProtocol, IndexType: SIMD&Comparable&Seq
     static var order: Int {
         Dimensions.count
     }
-    subscript(index: IndexType.Scalar...) -> IndexType.Scalar {
+    subscript(index: ScalarIndex...) -> ScalarIndex {
         self[.init(index)]
     }
-    subscript(index: IndexType) -> IndexType.Scalar {
+    subscript(index: IndexType) -> ScalarIndex {
         index.inner(stride)
     }
 
@@ -202,8 +200,8 @@ public struct Shape<Dimensions: TypeListProtocol, IndexType: SIMD&Comparable&Seq
         if Self.self == S.self {
             return self as! S
         }
-        var s: [IndexType.Scalar] = .init(shape)
-        var t: [IndexType.Scalar] = .init(stride)
+        var s: [ScalarIndex] = .init(shape)
+        var t: [ScalarIndex] = .init(stride)
         if s.count != S.order {
             while s.count > S.order {
                 if let ix = s.lastIndex(of: 1) {
@@ -227,10 +225,10 @@ public struct Shape<Dimensions: TypeListProtocol, IndexType: SIMD&Comparable&Seq
         if S.self == Self.self, let s = self as? S, s.shape == other.shape, s.stride == other.stride {
             return s
         }
-        var s1 = shape.map {S.IndexType.Scalar($0)}
-        var t1 = stride.map {S.IndexType.Scalar($0)}
-        let s2: [S.IndexType.Scalar] = .init(other.shape)
-        let t2: [S.IndexType.Scalar] = .init(other.stride)
+        var s1 = shape.map {ScalarIndex($0)}
+        var t1 = stride.map {ScalarIndex($0)}
+        let s2: [ScalarIndex] = .init(other.shape)
+        let t2: [ScalarIndex] = .init(other.stride)
         if broadcastImpl(shape1: &s1, stride1: &t1, shape2: s2, stride2: t2, t1: Dimensions.rtypes, t2: S.Dimensions.rtypes) {
             return S(shape: .init(s1), stride: .init(t1))
         } else {
@@ -290,11 +288,11 @@ public struct Shape<Dimensions: TypeListProtocol, IndexType: SIMD&Comparable&Seq
         }
         let t2f: [String] = t2.flatMap({$0})
         if t2f.count == t1.count {
-            var newShape: [S.IndexType.Scalar] = []
+            var newShape: [ScalarIndex] = []
             var j = 0
             for tt in t2 {
-                var s: IndexType.Scalar = 1
-                var d: IndexType.Scalar = stride[j]
+                var s: ScalarIndex = 1
+                var d: ScalarIndex = stride[j]
                 for t in tt {
                     if t != t1[j], let x = Swift.stride(from: j+1, to: t1.count, by: 1).first(where: {t1[$0]==t}) {
                         size.swapAt(j, x)
@@ -333,186 +331,10 @@ extension Shape: CustomDebugStringConvertible {
     }
 }
 
-public struct SIMDIterator<S: SIMD>: IteratorProtocol where S.Scalar: FixedWidthInteger {
-    var index: S = .zero
-    let size: S
-    let stride: S
-    var last: Bool = false
-    init(size: S, stride: S) {
-        self.size = size
-        self.stride = stride
-    }
-    init(size: [S.Scalar], stride: [S.Scalar]) {
-        var s = size
-        var t = stride
-        if s.count < S.scalarCount || t.count < S.scalarCount {
-            s.append(contentsOf: repeatElement(1, count: S.scalarCount-s.count))
-            t.append(contentsOf: repeatElement(0, count: S.scalarCount-t.count))
-        }
-        self.init(size: S(s), stride: S(t))
-    }
-    mutating public func next(index j: Int) -> Bool {
-        if last {
-            return false
-        }
-        for i in Swift.stride(from: 0, to: j, by: 1) {
-            index[i] = 0
-        }
-        for i in j..<S.scalarCount {
-            index[i] &+= 1
-            if index[i] == size[i] {
-                index[i] = 0
-            } else {
-                return true
-            }
-        }
-        return false
-    }
-    mutating public func next() -> S.Scalar? {
-        if last {
-            return nil
-        }
-        let t = index.inner(stride)
-        if index.increment(size: size) {
-            return t
-        }
-        last = true
-        return t
-    }
-}
-
-public struct SIMDPairIterator<S: SIMD>: IteratorProtocol where S.Scalar: FixedWidthInteger {
-    var index: S = .zero
-    let size: S
-    let stride1: S
-    let stride2: S
-    var last: Bool = false
-    init(size: S, stride1: S, stride2: S) {
-        self.size = size
-        self.stride1 = stride1
-        self.stride2 = stride2
-    }
-    mutating public func next() -> (S.Scalar, S.Scalar)? {
-        if last {
-            return nil
-        }
-        let t1 = index.inner(stride1)
-        let t2 = index.inner(stride2)
-        if !index.increment(size: size) {
-            last = true
-        }
-        return (t1, t2)
-    }
-}
-extension Shape: Sequence {
-    public func makeIterator() -> SIMDIterator<IndexType> {
-        .init(size: shape, stride: stride)
-    }
-    public func pairIterator(rhs: Self) -> SIMDPairIterator<IndexType> {
-        if rhs.shape != shape {
-            fatalError()
-        }
-        return .init(size: shape, stride1: stride, stride2: rhs.stride)
-    }
-}
-
-public struct SIMDIndexingIterator<S: SIMD>: IteratorProtocol {
-    var index: Int = 0
-    let value: S
-    mutating public func next() -> S.Scalar? {
-        if index < S.scalarCount {
-            defer {
-                index += 1
-            }
-            return value[index]
-        }
-        return nil
-    }
-}
-extension SIMD {
-    public func makeIterator() -> SIMDIndexingIterator<Self> {
-        .init(value: self)
-    }
-    mutating public func swapAt(_ i: Int, _ j: Int) {
-        (self[i], self[j]) = (self[j], self[i])
-    }
-}
-extension SIMD where Scalar: FixedWidthInteger {
-    var product: Scalar {
-        var r: Scalar = 1
-        self.indices.forEach {
-            r *= self[$0]
-        }
-        return r
-    }
-    func inner(_ s: Self) -> Scalar {
-        (self &* s).wrappedSum()
-    }
-    mutating func increment(size: Self) -> Bool {
-        for i in indices {
-            self[i] &+= 1
-            if self[i] == size[i] {
-                self[i] = 0
-            } else {
-                return true
-            }
-        }
-        return false
-    }
-    public static func < (lhs: Self, rhs: Self) -> Bool {
-        for i in lhs.indices.reversed() {
-            if lhs[i] < rhs[i] {
-                return true
-            } else if lhs[i] > rhs[i] {
-                return false
-            }
-        }
-        return false
-    }
-}
-extension SIMD2: Comparable where Scalar: FixedWidthInteger {}
-extension SIMD3: Comparable where Scalar: FixedWidthInteger {}
-extension SIMD4: Comparable where Scalar: FixedWidthInteger {}
-extension SIMD8: Comparable where Scalar: FixedWidthInteger {}
-extension SIMD2: Sequence {}
-extension SIMD3: Sequence {}
-extension SIMD4: Sequence {}
-extension SIMD8: Sequence {}
-public struct SIMD1<Scalar: FixedWidthInteger>: SIMD, Comparable, Sequence where Scalar: SIMDScalar, Scalar.Stride: SIMDScalar, Scalar.Stride.Stride == Scalar.Stride {
-    public typealias Element = Scalar
-    public init() {
-        value = .zero
-    }
-
-    public init(arrayLiteral elements: Scalar...) {
-        value = elements.first!
-    }
-    var value: Scalar
-    public subscript(index: Int) -> Scalar {
-        get {
-            value
-        }
-        set {
-            value = newValue
-        }
-    }
-    public var scalarCount: Int {
-        1
-    }
-    public func makeIterator() -> CollectionOfOne<Scalar>.Iterator {
-        CollectionOfOne(value).makeIterator()
-    }
-    public typealias MaskStorage = SIMD1<Scalar.Stride>
-    public typealias ArrayLiteralElement = Scalar
-    public static func < (lhs: Self, rhs: Self) -> Bool {
-        lhs.value < rhs.value
-    }
-}
-
 public protocol TensorProtocol {
     associatedtype T
     associatedtype Types: TypeListProtocol
-    associatedtype IndexType: SIMD&Comparable&Sequence where IndexType.Scalar==ScalarIndex, IndexType.Element == IndexType.Scalar
+    associatedtype IndexType: TensorIndex
     associatedtype Tail: TensorProtocol where Tail.IndexType == IndexType, Tail.T == T
     init(buffer: Buffer<T>, shape: Shape<Types, IndexType>)
     var buffer: Buffer<T> { get set }
@@ -555,7 +377,7 @@ extension String: DefaultValue {
 extension Array: DefaultValue {
     public static var defaultValue: Self? { [] }
 }
-public struct Tensor<Types: TypeListProtocol, IndexType: SIMD&Comparable&Sequence, T>: TensorProtocol where IndexType.Scalar==ScalarIndex, IndexType.Element == IndexType.Scalar {
+public struct Tensor<Types: TypeListProtocol, IndexType: TensorIndex, T>: TensorProtocol {
     public typealias ShapeType = Shape<Types, IndexType>
     public typealias Tail = Tensor<Types.Tail, IndexType, T>
 
@@ -566,7 +388,7 @@ public struct Tensor<Types: TypeListProtocol, IndexType: SIMD&Comparable&Sequenc
         self.buffer = buffer
         self.shape = shape
     }
-    public init(shape: [IndexType.Scalar], function: (IndexType) -> T) {
+    public init(shape: [ScalarIndex], function: (IndexType) -> T) {
         var shape = shape
         shape.reverse()
         while shape.count < Self.order {
@@ -594,7 +416,7 @@ public struct Tensor<Types: TypeListProtocol, IndexType: SIMD&Comparable&Sequenc
     }
     public init<S: TensorProtocol>(elements values: [S]) where S.T == T, S.Types == Types.Tail {
         var size: IndexType = .one
-        size[Self.order-1] = IndexType.Scalar(values.count)
+        size[Self.order-1] = ScalarIndex(values.count)
         for value in values {
             for j in 0..<S.order {
                 size[j] = Swift.max(size[j], value.shape.shape[j])
@@ -611,7 +433,7 @@ public struct Tensor<Types: TypeListProtocol, IndexType: SIMD&Comparable&Sequenc
                         for j in 0..<S.order {
                             it1[j] = it.index[j]
                         }
-                        it1[Self.order-1] = IndexType.Scalar(value.offset)
+                        it1[Self.order-1] = ScalarIndex(value.offset)
                         optr.advanced(by: Int(it1.inner(shape.stride))).initialize(to: iptr[Int(i)])
                     }
                 }
@@ -629,7 +451,7 @@ public struct Tensor<Types: TypeListProtocol, IndexType: SIMD&Comparable&Sequenc
         }
         let shape: Shape<Types, IndexType> = .init(shape: size)
         var buffer: Buffer<T> = .init(capacity: shape.count)
-        var row: IndexType.Scalar = 0
+        var row: ScalarIndex = 0
         buffer.apply { optr in
             for value in values {
                 value.buffer.apply { iptr in
@@ -647,7 +469,7 @@ public struct Tensor<Types: TypeListProtocol, IndexType: SIMD&Comparable&Sequenc
         }
         self.init(buffer: buffer, shape: shape)
     }
-    public init(shape: [IndexType.Scalar], initialValue: T) {
+    public init(shape: [ScalarIndex], initialValue: T) {
         assert(shape.count == Types.count, "expecting \(Types.count) sizes")
         var s: IndexType = .one
         for i in shape.indices {
@@ -658,10 +480,10 @@ public struct Tensor<Types: TypeListProtocol, IndexType: SIMD&Comparable&Sequenc
     public init(shape: ShapeType, initialValue: T) {
         self.init(buffer: .init(capacity: Int(shape.count), initialValue: initialValue), shape: shape)
     }
-    public init(shape: IndexType.Scalar..., initialValue: T) {
+    public init(shape: ScalarIndex..., initialValue: T) {
         self.init(shape: shape, initialValue: initialValue)
     }
-    public init(shape: IndexType.Scalar...) where T: Numeric {
+    public init(shape: ScalarIndex...) where T: Numeric {
         self.init(shape: shape, initialValue: .zero)
     }
     public var size: [Int] {
@@ -682,7 +504,7 @@ public struct Tensor<Types: TypeListProtocol, IndexType: SIMD&Comparable&Sequenc
     public var isScalar: Bool {
         Types.self == NilTypeList.self
     }
-    public func broadcast<TP: TypeListProtocol, I: SIMD>(to: Shape<TP, I>) -> Tensor<TP, I, T>? {
+    public func broadcast<TP: TypeListProtocol, I: TensorIndex>(to: Shape<TP, I>) -> Tensor<TP, I, T>? {
         if let newShape = shape.broadcast(like: to) {
             return .init(buffer: buffer, shape: newShape)
         } else {
@@ -720,8 +542,8 @@ public struct Tensor<Types: TypeListProtocol, IndexType: SIMD&Comparable&Sequenc
         let d = Self.order - R.order
         guard d >= 0 else { return nil }
         var indices:[(source: Int, target: Int)] = []
-        var resultsize: [IndexType.Scalar] = []
-        var resultstride: [IndexType.Scalar] = []
+        var resultsize: [ScalarIndex] = []
+        var resultstride: [ScalarIndex] = []
         var rcount = 1
         for target in t2.indices {
             if let source = t1.indices.first(where: {s in t2[target] == t1[s] && !indices.contains(where: {$0.source==s})}) {
@@ -732,10 +554,10 @@ public struct Tensor<Types: TypeListProtocol, IndexType: SIMD&Comparable&Sequenc
                 indices.append((source:source, target:target))
             }
         }
-        var sourcesize: [IndexType.Scalar] = t1.indices.filter {source in !indices.contains(where: {$0.source==source})}.map {shape.shape[$0]}
+        var sourcesize: [ScalarIndex] = t1.indices.filter {source in !indices.contains(where: {$0.source==source})}.map {shape.shape[$0]}
         let sumcount = sourcesize.reduce(1, *)
         sourcesize.append(contentsOf: resultsize)
-        var sourcestride: [IndexType.Scalar] = t1.indices.filter {source in !indices.contains(where: {$0.source==source})}.map {shape.stride[$0]}
+        var sourcestride: [ScalarIndex] = t1.indices.filter {source in !indices.contains(where: {$0.source==source})}.map {shape.stride[$0]}
         sourcestride.append(contentsOf: resultstride)
         guard indices.count == t2.count else { return nil }
         let resultshape: Shape<R.Types, R.IndexType> = .init(shape: resultsize)
@@ -744,7 +566,7 @@ public struct Tensor<Types: TypeListProtocol, IndexType: SIMD&Comparable&Sequenc
             buffer.apply { iptr in
                 var innerit = SIMDIterator<IndexType>(size: sourcesize, stride: sourcestride)
                 if sumcount > 1024 && R.T.self == T.self {
-                    let bits = (IndexType.Scalar.bitWidth - sumcount.leadingZeroBitCount)/2
+                    let bits = (ScalarIndex.bitWidth - sumcount.leadingZeroBitCount)/2
                     for j in 0..<rcount {
                         var sums: [R.T] = .init(repeating: zero, count: 1+Int(sumcount)>>bits)
                         var k = 0
@@ -782,7 +604,7 @@ public struct Tensor<Types: TypeListProtocol, IndexType: SIMD&Comparable&Sequenc
         let t3 = R.Types.types
         guard zip((t1+t2), t3).allSatisfy({$0.0 == $0.1}) else { fatalError("incompatible types") }
         var rbuffer: Buffer<T> = .init(capacity: Int(shape.count*rhs.shape.count))
-        let shape: Shape<R.Types, R.IndexType> = .init(shape: (rhs.shape.shape.map {R.IndexType.Scalar($0)} + self.shape.shape.map {R.IndexType.Scalar($0)}))
+        let shape: Shape<R.Types, R.IndexType> = .init(shape: (rhs.shape.shape.map {ScalarIndex($0)} + self.shape.shape.map {ScalarIndex($0)}))
         var c = 0
         var itl = self.shape.makeIterator()
         rbuffer.apply { optr in
@@ -823,7 +645,7 @@ public struct Tensor<Types: TypeListProtocol, IndexType: SIMD&Comparable&Sequenc
             print(R.order)
             return nil
         }
-        typealias DIM = (IndexType.Scalar, IndexType.Scalar, Any.Type)
+        typealias DIM = (ScalarIndex, ScalarIndex, Any.Type)
         let s1: [DIM] = .init(Zip3Sequence(a: shape.shape, b: shape.stride, c: Types.types.reversed()))
         let s2: [DIM] = .init(Zip3Sequence(a: rhs.shape.shape, b: rhs.shape.stride, c: S.Types.types.reversed()))
         let s3: [Any.Type] = .init(R.Types.types.reversed())
@@ -879,10 +701,10 @@ public struct Tensor<Types: TypeListProtocol, IndexType: SIMD&Comparable&Sequenc
         if let r = search(abmap: &abmap, index: 0) {
             let acmap:[(key: Int, value: Int)] = r.acmap
             let bcmap:[(key: Int, value: Int)] = r.bcmap
-            var r_size: [IndexType.Scalar] = .init(repeating: 0, count: R.order)
-            var l_stride: [IndexType.Scalar] = .init(repeating: 0, count: Self.order+S.order-d)
-            var r_stride: [IndexType.Scalar] = .init(repeating: 0, count: Self.order+S.order-d)
-            var i_size: [IndexType.Scalar] = .init(repeating: 0, count: Self.order+S.order-d)
+            var r_size: [ScalarIndex] = .init(repeating: 0, count: R.order)
+            var l_stride: [ScalarIndex] = .init(repeating: 0, count: Self.order+S.order-d)
+            var r_stride: [ScalarIndex] = .init(repeating: 0, count: Self.order+S.order-d)
+            var i_size: [ScalarIndex] = .init(repeating: 0, count: Self.order+S.order-d)
             bcmap.forEach {
                 r_size[$0.value] = s2[$0.key].0
                 r_stride[$0.value+d] = s2[$0.key].1
@@ -905,13 +727,13 @@ public struct Tensor<Types: TypeListProtocol, IndexType: SIMD&Comparable&Sequenc
             let resultshape: Shape<R.Types, R.IndexType> = .init(shape: r_size)
             switch S.order+Self.order - d {
             case 1...2:
-                return multiplyImpl(iteratorType: SIMD2<IndexType.Scalar>.self, rhs: rhs, innershape: i_size, linnerstride: l_stride, rinnerstride: r_stride, resultshape: resultshape, zero: zero, sumcount: sumcount, multiplyOperator: multiplyOperator, sumOperator: sumOperator)
+                return multiplyImpl(indexType: SIMD2<ScalarIndex>.self, rhs: rhs, innershape: i_size, linnerstride: l_stride, rinnerstride: r_stride, resultshape: resultshape, zero: zero, sumcount: sumcount, multiplyOperator: multiplyOperator, sumOperator: sumOperator)
             case 3:
-                return multiplyImpl(iteratorType: SIMD3<IndexType.Scalar>.self, rhs: rhs, innershape: i_size, linnerstride: l_stride, rinnerstride: r_stride, resultshape: resultshape, zero: zero, sumcount: sumcount, multiplyOperator: multiplyOperator, sumOperator: sumOperator)
+                return multiplyImpl(indexType: SIMD3<ScalarIndex>.self, rhs: rhs, innershape: i_size, linnerstride: l_stride, rinnerstride: r_stride, resultshape: resultshape, zero: zero, sumcount: sumcount, multiplyOperator: multiplyOperator, sumOperator: sumOperator)
             case 4:
-                return multiplyImpl(iteratorType: SIMD4<IndexType.Scalar>.self, rhs: rhs, innershape: i_size, linnerstride: l_stride, rinnerstride: r_stride, resultshape: resultshape, zero: zero, sumcount: sumcount, multiplyOperator: multiplyOperator, sumOperator: sumOperator)
+                return multiplyImpl(indexType: SIMD4<ScalarIndex>.self, rhs: rhs, innershape: i_size, linnerstride: l_stride, rinnerstride: r_stride, resultshape: resultshape, zero: zero, sumcount: sumcount, multiplyOperator: multiplyOperator, sumOperator: sumOperator)
             case 5...8:
-                return multiplyImpl(iteratorType: SIMD8<IndexType.Scalar>.self, rhs: rhs, innershape: i_size, linnerstride: l_stride, rinnerstride: r_stride, resultshape: resultshape, zero: zero, sumcount: sumcount, multiplyOperator: multiplyOperator, sumOperator: sumOperator)
+                return multiplyImpl(indexType: SIMD8<ScalarIndex>.self, rhs: rhs, innershape: i_size, linnerstride: l_stride, rinnerstride: r_stride, resultshape: resultshape, zero: zero, sumcount: sumcount, multiplyOperator: multiplyOperator, sumOperator: sumOperator)
             default:
                 fatalError()
             }
@@ -919,7 +741,7 @@ public struct Tensor<Types: TypeListProtocol, IndexType: SIMD&Comparable&Sequenc
             fatalError()
         }
     }
-    func multiplyImpl<R: TensorProtocol, S: TensorProtocol, IteratorType: SIMD&Comparable&Sequence>(iteratorType: IteratorType.Type, rhs: S, innershape: [IndexType.Scalar], linnerstride: [IndexType.Scalar], rinnerstride: [IndexType.Scalar], resultshape: Shape<R.Types, R.IndexType>, zero: T, sumcount: Int, multiplyOperator: (T, T) -> T, sumOperator: (T, T) -> T) -> R where S.T == T, R.T == T, IteratorType.Element == IteratorType.Scalar, IteratorType.Scalar == IndexType.Scalar {
+    func multiplyImpl<R: TensorProtocol, S: TensorProtocol, IteratorType: TensorIndex>(indexType: IteratorType.Type, rhs: S, innershape: [ScalarIndex], linnerstride: [ScalarIndex], rinnerstride: [ScalarIndex], resultshape: Shape<R.Types, R.IndexType>, zero: T, sumcount: Int, multiplyOperator: (T, T) -> T, sumOperator: (T, T) -> T) -> R where S.T == T, R.T == T {
         var it1 = SIMDIterator<IteratorType>(size: innershape, stride: linnerstride)
         var it2 = SIMDIterator<IteratorType>(size: innershape, stride: rinnerstride)
         var rbuffer: Buffer<T> = .init(capacity: Int(resultshape.count))
@@ -1131,7 +953,7 @@ public struct Tensor<Types: TypeListProtocol, IndexType: SIMD&Comparable&Sequenc
     }
 }
 
-public struct TensorElementCollection<Types: TypeListProtocol, IndexType: SIMD&Comparable&Sequence, T>: MutableCollection where IndexType.Element == UInt32, IndexType.Scalar==UInt32 {
+public struct TensorElementCollection<Types: TypeListProtocol, IndexType: TensorIndex, T>: MutableCollection {
     var shape: Shape<Types, IndexType>
     var buffer: Buffer<T>
     public typealias Element = T
@@ -1149,12 +971,10 @@ public struct TensorElementCollection<Types: TypeListProtocol, IndexType: SIMD&C
     public subscript(position: IndexType) -> T {
         get {
             let index = position.inner(shape.stride)
-            //            print("getting \(index) -> \(buffer.readable[Int(index)])")
             return buffer.readable[Int(index)]
         }
         _modify {
             let index = position.inner(shape.stride)
-            //            print("set \(index) -> \(newValue)")
             yield &buffer.writable[Int(index)]
         }
         set {
@@ -1223,22 +1043,15 @@ public struct TensorElementCollection<Types: TypeListProtocol, IndexType: SIMD&C
             r += "]"
         }
         return r
-
     }
-    //    func index(_ i: TensorIndex, offsetBy distance: Int) -> TensorIndex {
-    //        <#code#>
-    //    }
-    //    func index(_ i: TensorIndex, offsetBy distance: Int, limitedBy limit: TensorIndex) -> TensorIndex? {
-    //        <#code#>
-    //    }
 }
 
-extension Tensor: CustomStringConvertible where T: CustomStringConvertible, IndexType: Comparable {
+extension Tensor: CustomStringConvertible where T: CustomStringConvertible {
     public var description: String {
         elements.mapToString(toString: \.description)
     }
 }
-extension Tensor: CustomDebugStringConvertible where T: CustomDebugStringConvertible, IndexType: Comparable {
+extension Tensor: CustomDebugStringConvertible where T: CustomDebugStringConvertible {
     public var debugDescription: String {
         elements.mapToString(toString: \.debugDescription)
     }
@@ -1295,7 +1108,7 @@ extension Tensor: ArrayValueProtocol where Types: NonEmptyList {
 }
 extension Tensor: ExpressibleByArrayLiteral where Types: NonEmptyList {
     public typealias ArrayLiteralElement = Tail
-    fileprivate static func computeDimension<S>(a: S, dim:inout [IndexType.Scalar], stack:inout [IndexType.Scalar]) {
+    fileprivate static func computeDimension<S>(a: S, dim:inout [ScalarIndex], stack:inout [ScalarIndex]) {
         if let _ = a as? T {
 
         } else if let t = a as? Tail {
@@ -1303,7 +1116,7 @@ extension Tensor: ExpressibleByArrayLiteral where Types: NonEmptyList {
                 return
             }
             for i in t.size {
-                stack.append(IndexType.Scalar(i))
+                stack.append(ScalarIndex(i))
             }
             for i in 0..<Swift.min(stack.count, dim.count) {
                 dim[i] = Swift.max(dim[i], stack[i])
@@ -1324,7 +1137,7 @@ extension Tensor: ExpressibleByArrayLiteral where Types: NonEmptyList {
                     count += 1
                 }
             }
-            stack.append(IndexType.Scalar(count))
+            stack.append(ScalarIndex(count))
             for i in s {
                 computeDimension(a: i, dim: &dim, stack: &stack)
             }
@@ -1337,9 +1150,9 @@ extension Tensor: ExpressibleByArrayLiteral where Types: NonEmptyList {
             stack.removeLast()
         }
     }
-    fileprivate static func computeDimension<S>(_ a: S) -> [IndexType.Scalar] {
-        var r: [IndexType.Scalar] = []
-        var stack: [IndexType.Scalar] = []
+    fileprivate static func computeDimension<S>(_ a: S) -> [ScalarIndex] {
+        var r: [ScalarIndex] = []
+        var stack: [ScalarIndex] = []
         computeDimension(a: a, dim: &r, stack: &stack)
         return r
     }
@@ -1394,7 +1207,7 @@ extension Tensor: ExpressibleByArrayLiteral where Types: NonEmptyList {
     public init(elements: [ArrayLiteralElement]) {
         let dim = Self.computeDimension(elements)
         var index: IndexType = .zero
-        var sdim = [IndexType.Scalar](dim.reversed())
+        var sdim = [ScalarIndex](dim.reversed())
         while sdim.count < Self.order {
             sdim.append(1)
         }
@@ -1418,7 +1231,7 @@ extension Tensor: ExpressibleByArrayLiteral where Types: NonEmptyList {
     public init<S: Sequence, X>(fromArray array: S) where S.Element == X {
         let dim = Self.computeDimension(array)
         var index: IndexType = .zero
-        var sdim = [IndexType.Scalar](dim.reversed())
+        var sdim = [ScalarIndex](dim.reversed())
         while sdim.count < Self.order {
             sdim.append(1)
         }
@@ -1496,13 +1309,13 @@ extension Tensor: Collection {
         get {
             var size = shape.shape
             let index = bounds.startIndex * Int(shape.stride[Self.order-1])
-            size[Self.order-1] = IndexType.Scalar(bounds.count)
+            size[Self.order-1] = ScalarIndex(bounds.count)
             return .init(buffer: .init(owner: buffer, offset: index, count: Int(size.product), shared: false), shape: .init(shape: size, stride: shape.stride))
         }
         _modify {
             var size = shape.shape
             let index = bounds.startIndex * Int(shape.stride[Self.order-1])
-            size[Self.order-1] = IndexType.Scalar(bounds.count)
+            size[Self.order-1] = ScalarIndex(bounds.count)
             var result: Self = .init(buffer: .init(owner: buffer, offset: index, count: Int(size.product), shared: true), shape: .init(shape: size, stride: shape.stride))
 //            print(result)
             yield &result
@@ -1511,7 +1324,7 @@ extension Tensor: Collection {
         set {
             var size = shape.shape
             let index = bounds.startIndex * Int(shape.stride[Self.order-1])
-            size[Self.order-1] = IndexType.Scalar(bounds.count)
+            size[Self.order-1] = ScalarIndex(bounds.count)
             let shape = Shape<Types, IndexType>(shape: size, stride: shape.stride)
             if shape != newValue.shape {
                 fatalError()
@@ -1678,7 +1491,7 @@ extension Tensor: AdditiveArithmetic where T: AdditiveArithmetic {
     public static func zeros(like: Self) -> Self {
         .init(buffer: .init(capacity: like.elementCount, initialValue: .zero), shape: like.shape)
     }
-    public static func zeros(shape sizes: IndexType.Scalar...) -> Self {
+    public static func zeros(shape sizes: ScalarIndex...) -> Self {
         let shape: Shape<Types, IndexType> = .init(shape: sizes.reversed())
         return .init(buffer: .init(capacity: shape.count, initialValue: .zero), shape: shape)
     }
@@ -1819,10 +1632,10 @@ extension Tensor: Numeric where T: Numeric {
     public static func * (lhs: Self, rhs: T) -> Self {
         lhs.applyUnary({$0*rhs})
     }
-    public static func *<S: TensorProtocol, R: TensorProtocol> (lhs: Self, rhs: S) -> R where T == S.T, IndexType.Element == R.IndexType.Element, T == R.T {
+    public static func *<S: TensorProtocol, R: TensorProtocol> (lhs: Self, rhs: S) -> R where T == S.T, T == R.T {
         lhs ⨂ rhs
     }
-    public static func ⨂<S: TensorProtocol, R: TensorProtocol> (lhs: Self, rhs: S) -> R where T == S.T, IndexType.Element == R.IndexType.Element, T == R.T {
+    public static func ⨂<S: TensorProtocol, R: TensorProtocol> (lhs: Self, rhs: S) -> R where T == S.T, T == R.T {
         if let r: R = lhs.multiply(rhs: rhs, zero: .zero, multiplyOperator: *, sumOperator: +) {
             return r
         } else {
@@ -2471,15 +2284,15 @@ extension Tensor: BinaryFloatingPoint where T: BinaryFloatingPoint {
             fatalError()
         }
     }
-    public init(shape: [IndexType.Scalar], uniformValuesIn range: Range<T>) where T.RawSignificand: FixedWidthInteger {
+    public init(shape: [ScalarIndex], uniformValuesIn range: Range<T>) where T.RawSignificand: FixedWidthInteger {
         var g = SystemRandomNumberGenerator()
         self.init(shape: shape, uniformValuesIn: range, using: &g)
     }
-    public init<R: RandomNumberGenerator>(shape: [IndexType.Scalar], uniformValuesIn range: Range<T>, using rng:inout R) where T.RawSignificand: FixedWidthInteger {
+    public init<R: RandomNumberGenerator>(shape: [ScalarIndex], uniformValuesIn range: Range<T>, using rng:inout R) where T.RawSignificand: FixedWidthInteger {
         self.init(shape: shape, function: {_ in T.random(in: range, using: &rng)})
     }
 
-    public init<R: RandomNumberGenerator>(shape: [IndexType.Scalar], mean: T, stddev: T, using rng:inout R) where T.RawSignificand: FixedWidthInteger {
+    public init<R: RandomNumberGenerator>(shape: [ScalarIndex], mean: T, stddev: T, using rng:inout R) where T.RawSignificand: FixedWidthInteger {
         var n: NormalDistribution<T, R> = .init(using: rng)
         self.init(shape: shape, function: {_ in
             (n.next()!*stddev)+mean
@@ -2667,8 +2480,16 @@ extension TensorProtocol where Types: NonEmptyList, Types.Tail: NonEmptyList {
     }
 }
 
+extension Tensor where Types: NonEmptyList, Types.Tail: NonEmptyList, Types.Tail.Tail==NilTypeList, T: Numeric {
+    public init(diag: [T]) {
+        self.init(shape: [ScalarIndex(diag.count), ScalarIndex(diag.count)], function: {
+            $0[0] == $0[1] ? diag[Int($0[0])] : .zero
+        })
+    }
+}
+
 extension Tensor where T: Numeric, Types: NonEmptyList, Types.Tail: NonEmptyList {
-    public static func eye(shape size: IndexType.Scalar...) -> Self {
+    public static func eye(shape size: ScalarIndex...) -> Self {
         let shape: Shape<Types, IndexType> = .init(shape: size.reversed())
         var r: Self = .init(buffer: .init(capacity: shape.count), shape: shape)
         var ix0 = 0
@@ -2823,8 +2644,8 @@ extension TensorSequence: CustomStringConvertible where A.Element.T: CustomStrin
 }
 
 public typealias Wrapping<V, S: TensorProtocol> = Tensor<TypeList<V, S.Types>, S.IndexType, S.T>
-public typealias Scalar<Element> = Tensor<NilTypeList, SIMD1<ScalarIndex>, Element>
-public typealias Vector<R, Element> = Tensor<TypeList<R, NilTypeList>, SIMD1<ScalarIndex>, Element>
+public typealias Scalar<Element> = Tensor<NilTypeList, SIMD1, Element>
+public typealias Vector<R, Element> = Tensor<TypeList<R, NilTypeList>, SIMD1, Element>
 public typealias Matrix<R, C, Element> = Tensor<TypeList<R, TypeList<C, NilTypeList>>, SIMD2<ScalarIndex>, Element>
 public typealias Tensor3<T, R, C, Element> = Tensor<TypeList<T, TypeList<R, TypeList<C, NilTypeList>>>, SIMD3<ScalarIndex>, Element>
 public typealias Tensor4<V, T, R, C, Element> = Tensor<TypeList<V, TypeList<T, TypeList<R, TypeList<C, NilTypeList>>>>, SIMD4<ScalarIndex>, Element>

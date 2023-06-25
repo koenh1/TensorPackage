@@ -10,7 +10,7 @@ import RegexBuilder
 
 struct Graph<ValueType: DifferentiableValue>: CustomStringConvertible {
     var nodes:[(id: ObjectIdentifier, gradient: ValueType)] = []
-    let generation:UInt32
+    let generation: UInt32
     var links:[(parent: ObjectIdentifier, child: ObjectIdentifier)] = []
     init(_ header: any HeaderProtocol) {
         var list: [any HeaderProtocol] = []
@@ -32,8 +32,8 @@ struct Graph<ValueType: DifferentiableValue>: CustomStringConvertible {
         for x in list.reversed() {
             x.updateGrad()
         }
-        func getInfo<T:HeaderProtocol>(x:T) -> (id:ObjectIdentifier,gradient:ValueType) {
-            (ObjectIdentifier(x),x.grad as! ValueType)
+        func getInfo<T: HeaderProtocol>(x: T) -> (id: ObjectIdentifier, gradient: ValueType) {
+            (ObjectIdentifier(x), x.grad as! ValueType)
         }
         for node in list {
             let info = getInfo(x: node)
@@ -44,7 +44,7 @@ struct Graph<ValueType: DifferentiableValue>: CustomStringConvertible {
     }
     var description: String {
         if #available(macOS 13.0, *) {
-            let regex = Regex  {
+            let regex = Regex {
                 "ObjectIdentifier(0"
                 Capture {
                     "x"
